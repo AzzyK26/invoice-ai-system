@@ -13,7 +13,7 @@ export default function UploadPage() {
 
     try {
 
-      // check duplicate based on filename
+      // Check duplicate invoice
       const { data: existing } = await supabase
         .from("invoices")
         .select("*")
@@ -27,7 +27,8 @@ export default function UploadPage() {
 
       const filePath = `uploads/${Date.now()}-${file.name}`
 
-      const { data, error } = await supabase.storage
+      // Upload file to Supabase storage
+      const { error } = await supabase.storage
         .from("documents")
         .upload(filePath, file)
 
@@ -37,6 +38,7 @@ export default function UploadPage() {
         return
       }
 
+      // Insert invoice record
       await supabase
         .from("invoices")
         .insert([
@@ -46,7 +48,51 @@ export default function UploadPage() {
           }
         ])
 
-      alert("Invoice uploaded successfully")
+      console.log("File uploaded:", filePath)
+
+      // SEND FILE TO AI EXTRACTION API
+      const formData = new FormData()
+      formData.append("file", file)
+
+      const res = await fetch("/api/extract", {
+        method: "POST",
+        body: formData
+      })
+
+      let result = null
+
+      try {
+        const text = await res.text()
+        result = text ? JSON.parse(text) : null
+      } catch (err) {
+        console.error("Invalid API response", err)
+      }
+
+      if (result?.data) {
+
+        const parsed = JSON.parse(result.data)
+
+        console.log("AI RESULT:", parsed)
+
+        // SAVE EXTRACTED DATA TO DATABASE
+        await supabase
+          .from("invoices")
+          .update({
+            vendor: parsed.vendor,
+            invoice_number: parsed.invoice_number,
+            invoice_date: parsed.date,
+            amount: parsed.amount,
+            vat: parsed.vat
+          })
+          .eq("file_path", filePath)
+
+      } else {
+
+        console.error("AI extraction failed:", result)
+
+      }
+
+      alert("Invoice uploaded and AI extraction complete")
 
     } catch (err) {
 
