@@ -43,7 +43,7 @@ export async function POST(req: Request) {
     console.log("PDF TEXT EXTRACTED:", text.substring(0, 200))
 
     const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash-latest"
+      model: "gemini-2.0-flash"
     })
 
     const prompt = `
