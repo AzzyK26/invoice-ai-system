@@ -1,7 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai"
 import PDFParser from "pdf2json"
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 
 export async function POST(req: Request) {
 
@@ -11,17 +8,16 @@ export async function POST(req: Request) {
     const file = formData.get("file") as File
 
     if (!file) {
-      return Response.json({ error: "No file received" }, { status: 400 })
+      return Response.json({ error: "No file uploaded" }, { status: 400 })
     }
 
     const buffer = Buffer.from(await file.arrayBuffer())
 
     const pdfParser = new PDFParser()
 
-    const text = await new Promise<string>((resolve) => {
+    const text: string = await new Promise((resolve) => {
 
       pdfParser.on("pdfParser_dataReady", (data: any) => {
-
         let extracted = ""
 
         data.Pages.forEach((page: any) => {
@@ -33,60 +29,39 @@ export async function POST(req: Request) {
         })
 
         resolve(extracted)
-
       })
 
       pdfParser.parseBuffer(buffer)
-
     })
 
-    console.log("PDF TEXT EXTRACTED:", text.substring(0, 200))
+    console.log("PDF TEXT:", text)
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash"
-    })
+    // SIMPLE EXTRACTION LOGIC
 
-    const prompt = `
-Extract the following fields from this invoice:
+    const vendorMatch = text.match(/(PTY LTD|LIMITED|LTD|INC|COMPANY|CORP)/i)
+    const amountMatch = text.match(/(total|amount)[^\d]*(\d+[\.,]?\d*)/i)
+    const vatMatch = text.match(/(vat)[^\d]*(\d+[\.,]?\d*)/i)
+    const dateMatch = text.match(/(\d{2}[\/\-]\d{2}[\/\-]\d{4})/)
 
-Vendor
-Invoice Number
-Invoice Date
-Total Amount
-VAT Amount
+    const data = {
+      vendor: vendorMatch ? vendorMatch[0] : "Unknown Vendor",
+      invoice_number: "N/A",
+      date: dateMatch ? dateMatch[0] : "",
+      amount: amountMatch ? amountMatch[2] : "0",
+      vat: vatMatch ? vatMatch[2] : "0"
+    }
 
-Return ONLY JSON like this:
+    console.log("EXTRACTED DATA:", data)
 
-{
- "vendor":"",
- "invoice_number":"",
- "date":"",
- "amount":"",
- "vat":""
-}
-
-Invoice text:
-${text}
-`
-
-    const result = await model.generateContent(prompt)
-
-    const responseText = result.response.text()
-
-    console.log("AI RESPONSE:", responseText)
-
-    return Response.json({
-      data: responseText
-    })
+    return Response.json({ data: JSON.stringify(data) })
 
   } catch (error) {
 
-    console.error("API ERROR:", error)
+    console.error("EXTRACTION ERROR:", error)
 
-    return Response.json({
-      error: String(error)
-    })
-
+    return Response.json(
+      { error: "Extraction failed" },
+      { status: 500 }
+    )
   }
-
 }
