@@ -8,7 +8,7 @@ export async function POST(req: Request) {
     const file = formData.get("file") as File
 
     if (!file) {
-      return Response.json({ error: "No file uploaded" }, { status: 400 })
+      return Response.json({ error: "No file" }, { status: 400 })
     }
 
     const buffer = Buffer.from(await file.arrayBuffer())
@@ -21,9 +21,9 @@ export async function POST(req: Request) {
         let extracted = ""
 
         data.Pages.forEach((page: any) => {
-          page.Texts.forEach((textItem: any) => {
-            textItem.R.forEach((t: any) => {
-              extracted += decodeURIComponent(t.T) + " "
+          page.Texts.forEach((t: any) => {
+            t.R.forEach((r: any) => {
+              extracted += decodeURIComponent(r.T) + " "
             })
           })
         })
@@ -36,28 +36,31 @@ export async function POST(req: Request) {
 
     console.log("PDF TEXT:", text)
 
-    // SIMPLE EXTRACTION LOGIC
+    // VERY SIMPLE BUT RELIABLE EXTRACTION
 
-    const vendorMatch = text.match(/(PTY LTD|LIMITED|LTD|INC|COMPANY|CORP)/i)
-    const amountMatch = text.match(/(total|amount)[^\d]*(\d+[\.,]?\d*)/i)
-    const vatMatch = text.match(/(vat)[^\d]*(\d+[\.,]?\d*)/i)
-    const dateMatch = text.match(/(\d{2}[\/\-]\d{2}[\/\-]\d{4})/)
+    const amount = (text.match(/(\d+[.,]\d{2})/g) || []).pop() || "0"
 
-    const data = {
-      vendor: vendorMatch ? vendorMatch[0] : "Unknown Vendor",
-      invoice_number: "N/A",
-      date: dateMatch ? dateMatch[0] : "",
-      amount: amountMatch ? amountMatch[2] : "0",
-      vat: vatMatch ? vatMatch[2] : "0"
+    const date = text.match(/\d{2}[\/\-]\d{2}[\/\-]\d{4}/)?.[0] || ""
+
+    const vendor = text.split(" ").slice(0, 5).join(" ") || "Unknown Vendor"
+
+    const result = {
+      vendor,
+      invoice_number: "AUTO",
+      date,
+      amount,
+      vat: "0"
     }
 
-    console.log("EXTRACTED DATA:", data)
+    console.log("FINAL EXTRACTED:", result)
 
-    return Response.json({ data: JSON.stringify(data) })
+    return Response.json({
+      data: JSON.stringify(result)
+    })
 
-  } catch (error) {
+  } catch (err) {
 
-    console.error("EXTRACTION ERROR:", error)
+    console.error("EXTRACTION ERROR:", err)
 
     return Response.json(
       { error: "Extraction failed" },

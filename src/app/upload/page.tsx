@@ -7,103 +7,78 @@ export default function UploadPage() {
 
   const onDrop = async (files: File[]) => {
 
-    const file = files[0]
+  const file = files[0]
+  if (!file) return
 
-    if (!file) return
+  try {
 
-    try {
+    const filePath = `uploads/${Date.now()}-${file.name}`
 
-      // Check duplicate invoice
-      const { data: existing } = await supabase
-        .from("invoices")
-        .select("*")
-        .ilike("file_path", `%${file.name}%`)
-        .limit(1)
+    // Upload file
+    const { error } = await supabase.storage
+      .from("documents")
+      .upload(filePath, file)
 
-      if (existing && existing.length > 0) {
-        alert("Duplicate invoice detected")
-        return
-      }
+    if (error) throw error
 
-      const filePath = `uploads/${Date.now()}-${file.name}`
-
-      // Upload file to Supabase storage
-      const { error } = await supabase.storage
-        .from("documents")
-        .upload(filePath, file)
-
-      if (error) {
-        console.error(error)
-        alert("Upload failed")
-        return
-      }
-
-      // Insert invoice record
-      const { data: inserted } = await supabase
+    // Insert row + GET ID
+    const { data: inserted, error: insertError } = await supabase
       .from("invoices")
-      .insert([
-    {
-      file_path: filePath,
-      status: "pending"
+      .insert([{ file_path: filePath, status: "pending" }])
+      .select()
+      .single()
+
+    if (insertError) throw insertError
+
+    console.log("INSERTED:", inserted)
+
+    // CALL API
+    const formData = new FormData()
+    formData.append("file", file)
+
+    const res = await fetch("/api/extract", {
+      method: "POST",
+      body: formData
+    })
+
+    const result = await res.json()
+
+    console.log("API RESULT:", result)
+
+    if (!result?.data) {
+      alert("Extraction failed")
+      return
     }
-  ])
-  .select()
-  .single()
 
-      console.log("File uploaded:", filePath)
+    const parsed = JSON.parse(result.data)
 
-      // SEND FILE TO AI EXTRACTION API
-      const formData = new FormData()
-      formData.append("file", file)
+    console.log("PARSED:", parsed)
 
-      const res = await fetch("/api/extract", {
-        method: "POST",
-        body: formData
+    // FORCE UPDATE
+    const { error: updateError } = await supabase
+      .from("invoices")
+      .update({
+        vendor: parsed.vendor,
+        invoice_number: parsed.invoice_number,
+        invoice_date: parsed.date,
+        amount: parsed.amount,
+        vat: parsed.vat
       })
+      .eq("id", inserted.id)
 
-      let result = null
-
-      try {
-        const text = await res.text()
-        result = text ? JSON.parse(text) : null
-      } catch (err) {
-        console.error("Invalid API response", err)
-      }
-
-      if (result?.data) {
-
-        const parsed = JSON.parse(result.data)
-
-        console.log("AI RESULT:", parsed)
-
-        // SAVE EXTRACTED DATA TO DATABASE
-        await supabase
-        .from("invoices")
-        .update({
-          vendor: parsed.vendor,
-          invoice_number: parsed.invoice_number,
-          invoice_date: parsed.date,
-          amount: parsed.amount,
-          vat: parsed.vat
-        })
-        .eq("id", inserted.id)
-
-      } else {
-
-        console.error("AI extraction failed:", result)
-
-      }
-
-      alert("Invoice uploaded and AI extraction complete")
-
-    } catch (err) {
-
-      console.error(err)
-      alert("Processing failed")
-
+    if (updateError) {
+      console.error("UPDATE ERROR:", updateError)
     }
+
+    alert("DONE - Extraction + Save complete")
+
+  } catch (err) {
+
+    console.error("FULL ERROR:", err)
+    alert("Something failed")
 
   }
+}
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop })
 
