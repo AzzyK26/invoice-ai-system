@@ -39,14 +39,16 @@ export default function UploadPage() {
       }
 
       // Insert invoice record
-      await supabase
-        .from("invoices")
-        .insert([
-          {
-            file_path: filePath,
-            status: "pending"
-          }
-        ])
+      const { data: inserted } = await supabase
+      .from("invoices")
+      .insert([
+    {
+      file_path: filePath,
+      status: "pending"
+    }
+  ])
+  .select()
+  .single()
 
       console.log("File uploaded:", filePath)
 
@@ -76,15 +78,15 @@ export default function UploadPage() {
 
         // SAVE EXTRACTED DATA TO DATABASE
         await supabase
-          .from("invoices")
-          .update({
-            vendor: parsed.vendor,
-            invoice_number: parsed.invoice_number,
-            invoice_date: parsed.date,
-            amount: parsed.amount,
-            vat: parsed.vat
-          })
-          .eq("file_path", filePath)
+        .from("invoices")
+        .update({
+          vendor: parsed.vendor,
+          invoice_number: parsed.invoice_number,
+          invoice_date: parsed.date,
+          amount: parsed.amount,
+          vat: parsed.vat
+        })
+        .eq("id", inserted.id)
 
       } else {
 
